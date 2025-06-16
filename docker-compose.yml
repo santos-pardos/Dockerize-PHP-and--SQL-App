@@ -1,0 +1,61 @@
+version: '3.8' # Specify the Docker Compose file format version
+
+services:
+  # -----------------------------------------------------------
+  # Service for the PHP application (web server)
+  # -----------------------------------------------------------
+  web:
+    build: . # Docker will look for a Dockerfile in the current directory to build this image.
+    ports:
+      # CHANGED: Mapping host port 8888 to container port 80.
+      # Access your app via http://localhost:8888
+      - "${APP_PORT}:80"
+    volumes:
+      # Mounts your current local project directory into the Apache document root.
+      # This means any changes you make to your PHP files locally will be immediately
+      # reflected in the running container without needing to rebuild the image.
+      - .:/var/www/html/
+    depends_on:
+      # Ensures the 'db' service is started and healthy before the 'web' service attempts to start.
+      db:
+        condition: service_healthy
+    environment:
+      # These environment variables inform the PHP application how to connect to the database.
+      # 'db' is the hostname because it's the name of the database service in this Compose file.
+      MYSQL_HOST: db
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+  # -----------------------------------------------------------
+  # Service for the MariaDB database
+  # -----------------------------------------------------------
+  db:
+    image: mariadb:10.6 # Uses the official MariaDB Docker image.
+    environment:
+      # These environment variables configure the MariaDB server upon its initial startup.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}  # Root password for the database.
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      # Persistent storage for your database data.
+      - db_data:/var/lib/mysql
+      # Initialize the database with your SQL dump.
+      - ./elearn.sql:/docker-entrypoint-initdb.d/elearn.sql
+    healthcheck:
+      # Defines a health check for the database service.
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      # CHANGED: Mapping host port 3307 to container port 3306.
+      # If you need to connect to the database from your host machine (e.g., with a GUI tool),
+      # you'd use localhost:3307.
+      - "${DB_PORT}:3306"
+
+# Define named volumes.
+volumes:
+  db_data:
