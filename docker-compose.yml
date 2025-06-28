@@ -1,61 +1,79 @@
-version: '3.8' # Specify the Docker Compose file format version
+# Specify the version of Docker Compose syntax being used.
+version: '3.8'
 
 services:
-  # -----------------------------------------------------------
-  # Service for the PHP application (web server)
-  # -----------------------------------------------------------
+  # -------------------------------
+  # Web server (PHP + Apache)
+  # -------------------------------
   web:
-    build: . # Docker will look for a Dockerfile in the current directory to build this image.
+    container_name: php_web_app  # Sets a custom name for the web container.
+    build: .                     # Builds the Docker image using the Dockerfile in the current directory.
+    
     ports:
-      # CHANGED: Mapping host port 8888 to container port 80.
-      # Access your app via http://localhost:8888
-      - "${APP_PORT}:80"
+      - "${APP_PORT}:80"        # Maps host port (from .env) to container port 80. Use http://localhost:${APP_PORT} to access.
+
     volumes:
-      # Mounts your current local project directory into the Apache document root.
-      # This means any changes you make to your PHP files locally will be immediately
-      # reflected in the running container without needing to rebuild the image.
-      - .:/var/www/html/
+      - .:/var/www/html/        # Mounts your current project directory into the container to reflect file changes immediately.
+
     depends_on:
-      # Ensures the 'db' service is started and healthy before the 'web' service attempts to start.
       db:
-        condition: service_healthy
+        condition: service_healthy  # Wait for the database to be healthy before starting the web server.
+
     environment:
-      # These environment variables inform the PHP application how to connect to the database.
-      # 'db' is the hostname because it's the name of the database service in this Compose file.
+      # These environment variables are passed into the container to configure the database connection.
       MYSQL_HOST: db
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
 
-  # -----------------------------------------------------------
-  # Service for the MariaDB database
-  # -----------------------------------------------------------
+    restart: unless-stopped     # Automatically restart unless the container is explicitly stopped.
+
+    networks:
+      - my_custom_network       # Connects this service to the custom defined network.
+
+  # -------------------------------
+  # MariaDB database service
+  # -------------------------------
   db:
-    image: mariadb:10.6 # Uses the official MariaDB Docker image.
+    container_name: mariadb_server  # Sets a custom name for the database container.
+    image: mariadb:10.6             # Uses the official MariaDB image (version 10.6).
+
     environment:
-      # These environment variables configure the MariaDB server upon its initial startup.
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}  # Root password for the database.
+      # Set up initial database and user credentials using environment variables.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
     volumes:
-      # Persistent storage for your database data.
-      - db_data:/var/lib/mysql
-      # Initialize the database with your SQL dump.
-      - ./elearn.sql:/docker-entrypoint-initdb.d/elearn.sql
+      - db_data:/var/lib/mysql      # Persists database files between container restarts.
+      - ./elearn.sql:/docker-entrypoint-initdb.d/elearn.sql  # Initializes the DB with this SQL file on first run.
+
     healthcheck:
-      # Defines a health check for the database service.
+      # Health check to ensure the DB is ready before allowing dependent containers to start.
       test: ["CMD", "mariadb-admin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
-    ports:
-      # CHANGED: Mapping host port 3307 to container port 3306.
-      # If you need to connect to the database from your host machine (e.g., with a GUI tool),
-      # you'd use localhost:3307.
-      - "${DB_PORT}:3306"
 
-# Define named volumes.
+    ports:
+      - "${DB_PORT}:3306"           # Maps MariaDB port 3306 in container to DB_PORT on host.
+
+    restart: unless-stopped         # Restart the DB container unless stopped manually.
+
+    networks:
+      - my_custom_network           # Connects the DB service to the custom network.
+
+# -------------------------------
+# Named volume to persist DB data
+# -------------------------------
 volumes:
-  db_data:
+  db_data:                          # This volume stores MariaDB data even if the container is removed.
+
+# -------------------------------
+# Custom Docker network
+# -------------------------------
+networks:
+  my_custom_network:                # User-defined bridge network allows clean communication between services.
+    driver: bridge                  # Bridge driver is default and suitable for most applications.
